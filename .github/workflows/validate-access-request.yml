@@ -11,7 +11,11 @@ jobs:
   validate-access:
     if: >-
       github.event.sender.login != 'github-actions[bot]' &&
-      contains(github.event.issue.labels.*.name, 'access-request')
+      (
+        github.event.issue.title == 'Access request' ||
+        startsWith(github.event.issue.title, 'Access request for ') ||
+        contains(github.event.issue.body, '### Access code')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Parse access request metadata
@@ -22,6 +26,23 @@ jobs:
             const issue = context.payload.issue;
             const requester = issue && issue.user && issue.user.login ? issue.user.login.trim() : '';
             const expectedTitle = requester ? `Access request for ${requester}` : 'Access request';
+
+            const currentLabels = new Set((issue.labels || []).map((label) => label.name));
+            const addIfMissing = async (name) => {
+              if (currentLabels.has(name)) {
+                return;
+              }
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: [name],
+              });
+              currentLabels.add(name);
+            };
+
+            await addIfMissing('access-request');
 
             if ((issue.title || '').trim() !== expectedTitle) {
               await github.rest.issues.update({
@@ -35,7 +56,7 @@ jobs:
               });
             }
 
-            const hasValidatedLabel = issue.labels.some((label) => label.name === 'validated');
+            const hasValidatedLabel = currentLabels.has('validated');
             core.setOutput('has_validated_label', hasValidatedLabel ? 'true' : 'false');
 
       - name: Validate access code
