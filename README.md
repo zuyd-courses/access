@@ -1,24 +1,16 @@
-# Student Access Requests
+# Access
 
-Use this repository to submit course access and assignment requests.
+Use this repository only for first-time course access.
 
-## 1) Request First-Time Access
+## Request First-Time Access
 
-If this is your first request, open this form:
+Open this form:
 
 https://github.com/zuyd-courses/access/issues/new?template=access-request.yml
 
 Use the access code provided by your instructor or in Moodle.
 
-After your request is approved, you will get access to the intake repository where you submit your profile details.
-
-## 2) Request Assignment Repository Access
-
-Only do this after your profile details are submitted and processed.
-
-Open this form:
-
-https://github.com/zuyd-courses/access/issues/new?template=assignment-request.yml
+After your request is approved, you will get access to the private student-requests repository where you submit profile details and future assignment requests.
 
 ## Need To Retry?
 

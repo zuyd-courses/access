@@ -45,7 +45,7 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const intakeRepo = 'student-intake';
+            const intakeRepo = 'student-requests';
             const intakeLink = `https://github.com/${owner}/${intakeRepo}/issues/new?template=profile-intake.yml`;
             const intakeHome = `https://github.com/${owner}/${intakeRepo}`;
             const targets = JSON.parse('${{ steps.collect.outputs.issue_numbers }}');
@@ -118,8 +118,8 @@ jobs:
               }
 
               const inviteNote = status === '201'
-                ? 'Your request was approved by your instructor. You have now been invited to the private intake repository.'
-                : 'Your request was approved by your instructor. You already have access to the private intake repository.';
+                ? 'Your request was approved by your instructor. You have now been invited to the private student-requests repository.'
+                : 'Your request was approved by your instructor. You already have access to the private student-requests repository.';
 
               await github.rest.issues.createComment({
                 owner,

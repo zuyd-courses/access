@@ -6,7 +6,7 @@ on:
       repositories:
         description: Comma-separated repositories in zuyd-courses to clean up.
         required: true
-        default: access,student-intake
+        default: access,student-requests
       confirm:
         description: Type DELETE to confirm permanent removal.
         required: true
