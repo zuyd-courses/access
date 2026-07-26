@@ -1,0 +1,19 @@
+name: Access request form
+description: Request first-time access so you can provide your profile details.
+title: "Access request"
+labels:
+  - access-request
+  - pending
+body:
+  - type: markdown
+    attributes:
+      value: Submit this form to request access.
+
+  - type: input
+    id: access_code
+    attributes:
+      label: Access code
+      description: Access code provided in course materials.
+      placeholder: COURSE ACCESS 1234
+    validations:
+      required: true

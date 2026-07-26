@@ -1,0 +1,156 @@
+name: Process Validated Access Requests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect open validated access requests
+        id: collect
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.COURSE_AUTOMATION_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: 'access-request,validated',
+              per_page: 100,
+            });
+
+            const targets = issues
+              .filter((issue) => {
+                const labels = issue.labels.map((l) => l.name);
+                return labels.includes('access-request') && labels.includes('validated') && !labels.includes('processed');
+              })
+              .map((issue) => issue.number);
+
+            core.notice(`Found ${targets.length} open validated access-request issue(s) to process.`);
+            core.setOutput('issue_numbers', JSON.stringify(targets));
+
+      - name: Process collected validated access requests
+        if: steps.collect.outputs.issue_numbers != '[]'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.COURSE_AUTOMATION_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const intakeRepo = 'student-intake';
+            const intakeLink = `https://github.com/${owner}/${intakeRepo}/issues/new?template=profile-intake.yml`;
+            const intakeHome = `https://github.com/${owner}/${intakeRepo}`;
+            const targets = JSON.parse('${{ steps.collect.outputs.issue_numbers }}');
+
+            let approvedCount = 0;
+            let failedCount = 0;
+            let closedCount = 0;
+
+            for (const issueNumber of targets) {
+              const issueResponse = await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number: issueNumber,
+              });
+
+              const issue = issueResponse.data;
+              const username = issue.user.login;
+              const currentLabels = new Set((issue.labels || []).map((label) => label.name));
+
+              const removeIfPresent = async (name) => {
+                if (!currentLabels.has(name)) {
+                  return;
+                }
+
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name });
+                currentLabels.delete(name);
+              };
+
+              const addLabels = async (labels) => {
+                const nextLabels = labels.filter((label) => !currentLabels.has(label));
+                if (nextLabels.length === 0) {
+                  return;
+                }
+
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: nextLabels,
+                });
+
+                for (const label of nextLabels) {
+                  currentLabels.add(label);
+                }
+              };
+
+              await removeIfPresent('pending');
+              await removeIfPresent('failed');
+              await addLabels(['approved']);
+
+              let status;
+              try {
+                const response = await github.rest.repos.addCollaborator({
+                  owner,
+                  repo: intakeRepo,
+                  username,
+                  permission: 'pull',
+                });
+                status = String(response.status);
+              } catch (error) {
+                failedCount += 1;
+                await addLabels(['failed']);
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  body: `Access request processing failed for @${username}: ${error.message}`,
+                });
+                continue;
+              }
+
+              const inviteNote = status === '201'
+                ? 'Your request was approved by your instructor. You have now been invited to the private intake repository.'
+                : 'Your request was approved by your instructor. You already have access to the private intake repository.';
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: `${inviteNote} Please submit your profile details there.\n\nNext steps:\n1. Go to ${intakeHome}\n2. Accept the invitation from GitHub (if you have not accepted it yet)\n3. Click the issue form link in the repository README\n4. Submit your profile details (first name, last name, classroom, zuyd email)\n\nDirect intake form link: ${intakeLink}`,
+              });
+
+              await removeIfPresent('validated');
+              await removeIfPresent('approved');
+              await addLabels(['processed']);
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                headers: {
+                  'X-GitHub-Api-Version': '2026-03-10',
+                },
+                state: 'closed',
+              });
+
+              approvedCount += 1;
+              closedCount += 1;
+            }
+
+            core.notice(
+              `Processing summary: total=${targets.length}, approved=${approvedCount}, failed=${failedCount}, closed=${closedCount}.`
+            );
+
+      - name: Skip notice when no validated requests are pending
+        if: steps.collect.outputs.issue_numbers == '[]'
+        run: echo "No open validated access-request issues found."
+

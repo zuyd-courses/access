@@ -1,0 +1,28 @@
+name: Assignment request form
+description: Request assignment repository provisioning.
+title: "Assignment request"
+labels:
+  - assignment-request
+  - pending
+body:
+  - type: markdown
+    attributes:
+      value: Submit this form to request assignment repository provisioning.
+
+  - type: input
+    id: organization
+    attributes:
+      label: Organization
+      description: Organization where the assignment repository should exist.
+      placeholder: mia-mmt1-2627
+    validations:
+      required: true
+
+  - type: input
+    id: repository
+    attributes:
+      label: Repository
+      description: Requested assignment name
+      placeholder: final-
+    validations:
+      required: true

@@ -1,0 +1,182 @@
+name: Cleanup Issues and Workflow Runs
+
+on:
+  workflow_dispatch:
+    inputs:
+      repositories:
+        description: Comma-separated repositories in zuyd-courses to clean up.
+        required: true
+        default: access,student-intake
+      confirm:
+        description: Type DELETE to confirm permanent removal.
+        required: true
+        default: ""
+
+permissions:
+  issues: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate cleanup request
+        id: prepare
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.COURSE_AUTOMATION_TOKEN }}
+          script: |
+            const confirm = '${{ github.event.inputs.confirm }}'.trim();
+            const rawRepos = '${{ github.event.inputs.repositories }}';
+
+            if (confirm !== 'DELETE') {
+              core.setFailed('Confirmation mismatch. Type DELETE in the confirm input to run cleanup.');
+              return;
+            }
+
+            const repos = [...new Set(
+              rawRepos
+                .split(',')
+                .map((name) => name.trim())
+                .filter(Boolean)
+            )];
+
+            if (repos.length === 0) {
+              core.setFailed('No repositories provided.');
+              return;
+            }
+
+            core.notice(`Validated ${repos.length} repo(s) for cleanup.`);
+            core.setOutput('repos_json', JSON.stringify(repos));
+
+      - name: Delete issues in selected repositories
+        id: issues
+        if: steps.prepare.outputs.repos_json != ''
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.COURSE_AUTOMATION_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repos = JSON.parse('${{ steps.prepare.outputs.repos_json }}');
+
+            const deleteIssueMutation = `
+              mutation($id: ID!) {
+                deleteIssue(input: { issueId: $id }) {
+                  clientMutationId
+                }
+              }
+            `;
+
+            const results = [];
+
+            for (const repo of repos) {
+              core.notice(`Deleting issues in ${owner}/${repo}`);
+
+              const allIssues = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: 'all',
+                per_page: 100,
+              });
+
+              const issueNodeIds = allIssues
+                .filter((item) => !item.pull_request)
+                .map((item) => item.node_id)
+                .filter(Boolean);
+
+              let deletedIssues = 0;
+              let failedIssues = 0;
+
+              for (const issueId of issueNodeIds) {
+                try {
+                  await github.graphql(deleteIssueMutation, { id: issueId });
+                  deletedIssues += 1;
+                } catch (error) {
+                  failedIssues += 1;
+                  core.warning(`Issue delete failed in ${owner}/${repo} for node ${issueId}: ${error.message}`);
+                }
+              }
+
+              results.push({ repo, deletedIssues, failedIssues });
+            }
+
+            core.setOutput('issues_results', JSON.stringify(results));
+
+      - name: Delete workflow runs and print summary
+        if: steps.prepare.outputs.repos_json != ''
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.COURSE_AUTOMATION_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const currentRepo = context.repo.repo;
+            const currentRunId = Number(context.runId || 0);
+            const repos = JSON.parse('${{ steps.prepare.outputs.repos_json }}');
+            const issuesResults = JSON.parse('${{ steps.issues.outputs.issues_results }}');
+            const issuesByRepo = new Map(issuesResults.map((item) => [item.repo, item]));
+
+            const runResults = [];
+
+            for (const repo of repos) {
+              core.notice(`Deleting workflow runs in ${owner}/${repo}`);
+
+              const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+                owner,
+                repo,
+                per_page: 100,
+              });
+
+              let deletedRuns = 0;
+              let failedRuns = 0;
+              let skippedCurrentRun = 0;
+
+              for (const run of runs) {
+                if (repo === currentRepo && Number(run.id) === currentRunId) {
+                  skippedCurrentRun += 1;
+                  continue;
+                }
+
+                try {
+                  await github.rest.actions.deleteWorkflowRun({
+                    owner,
+                    repo,
+                    run_id: run.id,
+                  });
+                  deletedRuns += 1;
+                } catch (error) {
+                  failedRuns += 1;
+                  core.warning(`Workflow run delete failed in ${owner}/${repo} for run ${run.id}: ${error.message}`);
+                }
+              }
+
+              runResults.push({
+                repo,
+                deletedRuns,
+                failedRuns,
+                skippedCurrentRun,
+              });
+            }
+
+            let totalDeletedIssues = 0;
+            let totalFailedIssues = 0;
+            let totalDeletedRuns = 0;
+            let totalFailedRuns = 0;
+            let totalSkippedCurrentRun = 0;
+
+            for (const item of runResults) {
+              const issueItem = issuesByRepo.get(item.repo) || { deletedIssues: 0, failedIssues: 0 };
+
+              totalDeletedIssues += issueItem.deletedIssues;
+              totalFailedIssues += issueItem.failedIssues;
+              totalDeletedRuns += item.deletedRuns;
+              totalFailedRuns += item.failedRuns;
+              totalSkippedCurrentRun += item.skippedCurrentRun;
+
+              core.notice(
+                `Cleanup summary for ${owner}/${item.repo}: issues deleted=${issueItem.deletedIssues}, issue failures=${issueItem.failedIssues}, runs deleted=${item.deletedRuns}, run failures=${item.failedRuns}, skipped current run=${item.skippedCurrentRun}.`
+              );
+            }
+
+            core.notice(
+              `Cleanup job summary: repos=${runResults.length}, issues deleted=${totalDeletedIssues}, issue failures=${totalFailedIssues}, runs deleted=${totalDeletedRuns}, run failures=${totalFailedRuns}, skipped current run=${totalSkippedCurrentRun}.`
+            );
