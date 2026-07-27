@@ -20,7 +20,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate cleanup request
+      - name: 01 Validate Cleanup Request
         id: prepare
         uses: actions/github-script@v9
         with:
@@ -49,7 +49,7 @@ jobs:
             core.notice(`Validated ${repos.length} repo(s) for cleanup.`);
             core.setOutput('repos_json', JSON.stringify(repos));
 
-      - name: Delete issues in selected repositories
+      - name: 02 Delete Issues in Selected Repositories
         id: issues
         if: steps.prepare.outputs.repos_json != ''
         uses: actions/github-script@v9
@@ -102,7 +102,8 @@ jobs:
 
             core.setOutput('issues_results', JSON.stringify(results));
 
-      - name: Delete workflow runs and print summary
+      - name: 03 Delete Workflow Runs in Selected Repositories
+        id: runs
         if: steps.prepare.outputs.repos_json != ''
         uses: actions/github-script@v9
         with:
@@ -156,6 +157,19 @@ jobs:
                 skippedCurrentRun,
               });
             }
+
+            core.setOutput('run_results', JSON.stringify(runResults));
+
+      - name: 04 Publish Cleanup Summary
+        if: steps.prepare.outputs.repos_json != ''
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.COURSE_AUTOMATION_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const issuesResults = JSON.parse('${{ steps.issues.outputs.issues_results }}');
+            const runResults = JSON.parse('${{ steps.runs.outputs.run_results }}');
+            const issuesByRepo = new Map(issuesResults.map((item) => [item.repo, item]));
 
             let totalDeletedIssues = 0;
             let totalFailedIssues = 0;
