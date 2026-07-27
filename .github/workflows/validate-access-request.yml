@@ -11,11 +11,7 @@ jobs:
   validate-access:
     if: >-
       github.event.sender.login != 'github-actions[bot]' &&
-      (
-        github.event.issue.title == 'Access request' ||
-        startsWith(github.event.issue.title, 'Access request for ') ||
-        contains(github.event.issue.body, '### Access code')
-      )
+      github.event.issue.title == 'Access request'
     runs-on: ubuntu-latest
     steps:
       - name: 01 Parse Request Data
