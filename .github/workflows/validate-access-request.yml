@@ -59,7 +59,41 @@ jobs:
             const hasValidatedLabel = currentLabels.has('validated');
             core.setOutput('has_validated_label', hasValidatedLabel ? 'true' : 'false');
 
-      - name: 02 Validate Request Data
+      - name: 02 Set Label Processing
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const issue = context.payload.issue;
+
+            const removeIfPresent = async (name) => {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name,
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            };
+
+            await removeIfPresent('failed');
+            await removeIfPresent('processed');
+            await removeIfPresent('pending');
+
+            try {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['processing'],
+              });
+            } catch (error) {
+              if (error.status !== 422) throw error;
+            }
+
+      - name: 03 Validate Request Data
         id: codecheck
         uses: actions/github-script@v9
         with:
@@ -113,7 +147,7 @@ jobs:
             const valid = Boolean(normalizedInput) && validCodes.includes(normalizedInput);
             core.setOutput('valid', valid ? 'true' : 'false');
 
-      - name: 03 Redact Sensitive Data
+      - name: 04 Redact Sensitive Data
         uses: actions/github-script@v9
         with:
           script: |
@@ -155,12 +189,23 @@ jobs:
               body: redactedBody,
             });
 
-      - name: 04 Handle Invalid Request
+      - name: 05 Handle Invalid Request
         if: steps.codecheck.outputs.valid != 'true'
         uses: actions/github-script@v9
         with:
           script: |
             const issue = context.payload.issue;
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'processing',
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
 
             try {
               await github.rest.issues.removeLabel({
@@ -201,12 +246,23 @@ jobs:
               state: 'closed',
             });
 
-      - name: 05 Handle Valid Request
+      - name: 06 Handle Valid Request
         if: steps.codecheck.outputs.valid == 'true'
         uses: actions/github-script@v9
         with:
           script: |
             const issue = context.payload.issue;
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'processing',
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
 
             try {
               await github.rest.issues.removeLabel({
@@ -230,7 +286,7 @@ jobs:
               if (error.status !== 422) throw error;
             }
 
-      - name: 06 Update Issue State
+      - name: 07 Update Issue State
         if: steps.codecheck.outputs.valid == 'true' && steps.meta.outputs.has_validated_label != 'true'
         uses: actions/github-script@v9
         with:
@@ -271,7 +327,7 @@ jobs:
               body: `Your submitted access code is valid. Your request is now waiting for instructor approval. You do not need to take any action right now. ${notifyText}`,
             });
 
-      - name: 07 Publish Workflow Summary
+      - name: 08 Publish Workflow Summary
         uses: actions/github-script@v9
         with:
           script: |
