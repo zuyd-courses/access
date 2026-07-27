@@ -18,7 +18,7 @@ jobs:
       )
     runs-on: ubuntu-latest
     steps:
-      - name: Parse access request metadata
+      - name: 01 Parse Request Data
         id: meta
         uses: actions/github-script@v9
         with:
@@ -59,7 +59,7 @@ jobs:
             const hasValidatedLabel = currentLabels.has('validated');
             core.setOutput('has_validated_label', hasValidatedLabel ? 'true' : 'false');
 
-      - name: Validate access code
+      - name: 02 Validate Request Data
         id: codecheck
         uses: actions/github-script@v9
         with:
@@ -113,7 +113,7 @@ jobs:
             const valid = Boolean(normalizedInput) && validCodes.includes(normalizedInput);
             core.setOutput('valid', valid ? 'true' : 'false');
 
-      - name: Redact access code in issue body
+      - name: 03 Redact Sensitive Data
         uses: actions/github-script@v9
         with:
           script: |
@@ -155,7 +155,7 @@ jobs:
               body: redactedBody,
             });
 
-      - name: Handle invalid access request
+      - name: 04 Handle Invalid Request
         if: steps.codecheck.outputs.valid != 'true'
         uses: actions/github-script@v9
         with:
@@ -201,7 +201,7 @@ jobs:
               state: 'closed',
             });
 
-      - name: Mark valid access request as validated
+      - name: 05 Handle Valid Request
         if: steps.codecheck.outputs.valid == 'true'
         uses: actions/github-script@v9
         with:
@@ -230,7 +230,7 @@ jobs:
               if (error.status !== 422) throw error;
             }
 
-      - name: Notify student about validated request
+      - name: 06 Update Issue State
         if: steps.codecheck.outputs.valid == 'true' && steps.meta.outputs.has_validated_label != 'true'
         uses: actions/github-script@v9
         with:
@@ -270,3 +270,22 @@ jobs:
               issue_number: issue.number,
               body: `Your submitted access code is valid. Your request is now waiting for instructor approval. You do not need to take any action right now. ${notifyText}`,
             });
+
+      - name: 07 Publish Workflow Summary
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const valid = '${{ steps.codecheck.outputs.valid }}' === 'true';
+            const alreadyValidated = '${{ steps.meta.outputs.has_validated_label }}' === 'true';
+
+            if (!valid) {
+              core.notice('Summary: invalid access request was marked failed and closed.');
+              return;
+            }
+
+            if (alreadyValidated) {
+              core.notice('Summary: valid access request already had validated label; no duplicate notify comment was added.');
+              return;
+            }
+
+            core.notice('Summary: valid access request was marked validated and student/instructors were notified in issue comments.');
