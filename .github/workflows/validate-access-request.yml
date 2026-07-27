@@ -163,6 +163,17 @@ jobs:
             const issue = context.payload.issue;
 
             try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'pending',
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            try {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
