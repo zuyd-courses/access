@@ -46,7 +46,6 @@ jobs:
               return;
             }
 
-            core.notice(`Validated ${repos.length} repo(s) for cleanup.`);
             core.setOutput('repos_json', JSON.stringify(repos));
 
       - name: 02 Delete Issues in Selected Repositories
@@ -70,8 +69,6 @@ jobs:
             const results = [];
 
             for (const repo of repos) {
-              core.notice(`Deleting issues in ${owner}/${repo}`);
-
               const allIssues = await github.paginate(github.rest.issues.listForRepo, {
                 owner,
                 repo,
@@ -113,14 +110,10 @@ jobs:
             const currentRepo = context.repo.repo;
             const currentRunId = Number(context.runId || 0);
             const repos = JSON.parse('${{ steps.prepare.outputs.repos_json }}');
-            const issuesResults = JSON.parse('${{ steps.issues.outputs.issues_results }}');
-            const issuesByRepo = new Map(issuesResults.map((item) => [item.repo, item]));
 
             const runResults = [];
 
             for (const repo of repos) {
-              core.notice(`Deleting workflow runs in ${owner}/${repo}`);
-
               const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
                 owner,
                 repo,
@@ -171,26 +164,10 @@ jobs:
             const runResults = JSON.parse('${{ steps.runs.outputs.run_results }}');
             const issuesByRepo = new Map(issuesResults.map((item) => [item.repo, item]));
 
-            let totalDeletedIssues = 0;
-            let totalFailedIssues = 0;
-            let totalDeletedRuns = 0;
-            let totalFailedRuns = 0;
-            let totalSkippedCurrentRun = 0;
-
             for (const item of runResults) {
               const issueItem = issuesByRepo.get(item.repo) || { deletedIssues: 0, failedIssues: 0 };
-
-              totalDeletedIssues += issueItem.deletedIssues;
-              totalFailedIssues += issueItem.failedIssues;
-              totalDeletedRuns += item.deletedRuns;
-              totalFailedRuns += item.failedRuns;
-              totalSkippedCurrentRun += item.skippedCurrentRun;
 
               core.notice(
                 `Cleanup summary for ${owner}/${item.repo}: issues deleted=${issueItem.deletedIssues}, issue failures=${issueItem.failedIssues}, runs deleted=${item.deletedRuns}, run failures=${item.failedRuns}, skipped current run=${item.skippedCurrentRun}.`
               );
             }
-
-            core.notice(
-              `Cleanup job summary: repos=${runResults.length}, issues deleted=${totalDeletedIssues}, issue failures=${totalFailedIssues}, runs deleted=${totalDeletedRuns}, run failures=${totalFailedRuns}, skipped current run=${totalSkippedCurrentRun}.`
-            );
