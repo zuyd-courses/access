@@ -1,4 +1,4 @@
-name: man: access process
+name: Process Validated Access Requests
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ jobs:
   process:
     runs-on: ubuntu-latest
     steps:
-      - name: 01 Parse Request Data
+      - name: 01 Collect Validated Access Requests
         id: collect
         uses: actions/github-script@v9
         with:
@@ -37,7 +37,7 @@ jobs:
             core.notice(`Found ${targets.length} open validated access-request issue(s) to process.`);
             core.setOutput('issue_numbers', JSON.stringify(targets));
 
-      - name: 06 Update Issue State
+      - name: 02 Process Requests and Update Issue State
         if: steps.collect.outputs.issue_numbers != '[]'
         uses: actions/github-script@v9
         with:
@@ -150,7 +150,7 @@ jobs:
               `Processing summary: total=${targets.length}, approved=${approvedCount}, failed=${failedCount}, closed=${closedCount}.`
             );
 
-      - name: 07 Publish Workflow Summary
+      - name: 03 Publish Workflow Summary
         if: steps.collect.outputs.issue_numbers == '[]'
         run: echo "No open validated access-request issues found."
 
